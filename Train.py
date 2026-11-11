@@ -112,8 +112,19 @@ test_out["risk_score"] = p_xgb_tuned
 test_out.to_csv("test_set.csv")
 print("Saved model.json and test_set.csv")
 
+explainer = shap.TreeExplainer(xgb_tuned)
+sv = explainer(X_test)
+importance = pd.Series(np.abs(sv.values).mean(axis=0), index=X_test.columns)
+print(importance.sort_values(ascending=False).head(10))
+shap.plots.beeswarm(sv, max_display=12, show=False)
+plt.savefig("shap_summary.png", bbox_inches="tight")
+plt.close()
 
-
+print("\nCutoff trade-off (XGBoost Tuned):")
+for cutoff in [0.2, 0.3, 0.4, 0.5]:
+        pred = (p_xgb_tuned >= cutoff).astype(int)
+        print(f"cutoff {cutoff}: flags {pred.mean():.1%} of borrowers, "
+        f"precision {precision_score(y_test, pred):.3f}, recall {recall_score(y_test, pred):.3f}")
 
 
 
