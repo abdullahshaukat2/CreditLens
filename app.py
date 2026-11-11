@@ -88,6 +88,10 @@ with st.sidebar:
     st.caption(f"Model: tuned XGBoost · Test AUC **{roc_auc_score(y_true, scores):.3f}**")
     st.caption("Data: UCI Default of Credit Card Clients (Taiwan, 2005). "
                "Scores shown are on 6,000 borrowers the model never trained on.")
+    st.divider()
+    st.markdown("If you would like to see more of my projects, go to my "
+                "[GitHub](https://github.com/abdullahshaukat2) or "
+                "[website](https://abdullahshaukat2.github.io/).")
 
 
 def risk_band(p):
