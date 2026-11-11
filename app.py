@@ -7,7 +7,9 @@ import numpy as np
 import pandas as pd
 import shap
 import streamlit as st
+import threading
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from sklearn.metrics import roc_auc_score, roc_curve, confusion_matrix
 from xgboost import XGBClassifier
 
@@ -71,6 +73,13 @@ plt.rcParams.update({
     "text.color": FG, "axes.labelcolor": FG, "axes.edgecolor": GRID,
     "xtick.color": FG, "ytick.color": FG, "legend.facecolor": "none", "legend.edgecolor": GRID,
 })
+
+@st.cache_resource
+def plot_lock():
+    # One lock shared by every visitor. shap's waterfall draws on matplotlib's global
+    # "current figure", which two people (or two quick clicks) can't safely share.
+    return threading.Lock()
+
 
 model, test, explainer = load()
 FEATURES = model.get_booster().feature_names
@@ -172,10 +181,13 @@ with tab1:
             st.write(f"- **{LABELS.get(f, f)}** {arrow} risk")
         exp = shap.Explanation(sv.values[0], sv.base_values[0], row[FEATURES].iloc[0].values,
                                feature_names=[LABELS.get(f, f) for f in FEATURES])
-        shap.plots.waterfall(exp, max_display=8, show=False)
-        fig = plt.gcf()
-        fig.set_size_inches(7, 4.2)
-        st.pyplot(fig, clear_figure=True)
+        with plot_lock():
+            plt.close("all")                      # start from a clean slate
+            shap.plots.waterfall(exp, max_display=8, show=False)
+            fig = plt.gcf()
+            fig.set_size_inches(7, 4.2)
+            st.pyplot(fig)
+            plt.close(fig)                        # free it so nothing reuses it
         st.caption("Starts at the average borrower's risk (bottom) and adds each feature's push. "
                    "Red raises risk, blue lowers it. Units are log-odds.")
 
@@ -220,7 +232,8 @@ with tab3:
 
     g1, g2, g3 = st.columns(3)
     with g1:
-        fig, ax = plt.subplots(figsize=(4, 3.6))
+        fig = Figure(figsize=(4, 3.6))
+        ax = fig.subplots()
         ax.imshow(cm, cmap="Blues")
         for (i, j), v in np.ndenumerate(cm):
             ax.text(j, i, f"{v:,}", ha="center", va="center",
@@ -228,11 +241,12 @@ with tab3:
         ax.set_xticks([0, 1], ["Not flagged", "Flagged"])
         ax.set_yticks([0, 1], ["Paid", "Defaulted"])
         ax.set_title("Confusion matrix")
-        st.pyplot(fig, clear_figure=True)
+        st.pyplot(fig)
     with g2:
         fpr, tpr, thr = roc_curve(y_true, scores)
         idx = np.argmin(np.abs(thr - cutoff))
-        fig, ax = plt.subplots(figsize=(4, 3.6))
+        fig = Figure(figsize=(4, 3.6))
+        ax = fig.subplots()
         ax.plot(fpr, tpr, lw=2, color=ACCENT, label=f"XGBoost (AUC {roc_auc_score(y_true, scores):.3f})")
         ax.plot([0, 1], [0, 1], "--", color="grey", label="Coin flip (0.5)")
         ax.scatter(fpr[idx], tpr[idx], color="red", zorder=3, label="Current cutoff")
@@ -240,14 +254,15 @@ with tab3:
         ax.set_ylabel("True positive rate (recall)")
         ax.set_title("ROC curve")
         ax.legend(fontsize=8, loc="lower right")
-        st.pyplot(fig, clear_figure=True)
+        st.pyplot(fig)
     with g3:
         imp = global_importance(explainer, test[FEATURES]).head(8)[::-1]
-        fig, ax = plt.subplots(figsize=(4, 3.6))
+        fig = Figure(figsize=(4, 3.6))
+        ax = fig.subplots()
         ax.barh([LABELS.get(f, f) for f in imp.index], imp.values, color=ACCENT)
         ax.set_xlabel("Mean |SHAP|")
         ax.set_title("Top drivers (all test borrowers)")
-        st.pyplot(fig, clear_figure=True)
+        st.pyplot(fig)
 
     st.subheader("Model comparison (ROC-AUC on the same 6,000-borrower test set)")
     st.dataframe(MODEL_RESULTS, hide_index=True, width="stretch",
