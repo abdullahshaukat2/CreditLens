@@ -111,12 +111,29 @@ tab1, tab2, tab3 = st.tabs(["🔍 Borrower lookup", "🧪 What-if simulator", "�
 with tab1:
     c1, c2 = st.columns([1, 3])
     with c1:
-        order = st.radio("Show", ["Highest risk", "Lowest risk", "Random"], key="order")
+        def make_pool(order):
+            if order == "Random":
+                return test  # any of the 6,000 test borrowers
+            return test.sort_values("risk_score", ascending=(order == "Lowest risk")).head(200)
+
+        def pick_random():
+            # new random borrower every time this runs (no fixed seed)
+            st.session_state.borrower = test.index[np.random.randint(len(test))]
+
+        def on_order_change():
+            if st.session_state.order == "Random":
+                pick_random()
+            else:  # jump to the top of the new sorted list
+                st.session_state.borrower = make_pool(st.session_state.order).index[0]
+
+        order = st.radio("Show", ["Highest risk", "Lowest risk", "Random"],
+                         key="order", on_change=on_order_change)
+        pool = make_pool(order)
+        # test_set.csv is indexed by pandas row number (starts at 0); the dataset's ID column starts at 1
+        borrower = st.selectbox("Borrower ID (from UCI dataset)", pool.index, key="borrower",
+                                format_func=lambda i: str(i + 1))
         if order == "Random":
-            pool = test.sample(200, random_state=7)
-        else:
-            pool = test.sort_values("risk_score", ascending=(order == "Lowest risk")).head(200)
-        borrower = st.selectbox("Borrower ID", pool.index, key="borrower")
+            st.button("🎲 Another random borrower", on_click=pick_random)
     row = test.loc[[borrower]]
     r = row.iloc[0]
     risk = float(r["risk_score"])
@@ -164,7 +181,7 @@ with tab1:
 
 # ---------------- Tab 2: What-if ----------------
 with tab2:
-    st.write(f"Change borrower **#{borrower}**'s profile and see how the model reacts. "
+    st.write(f"Change borrower **#{borrower + 1}**'s profile and see how the model reacts. "
              "Engineered features (utilization, months late, etc.) are recomputed automatically.")
     a, b, c, d = st.columns(4)
     new_limit = a.number_input("Credit limit (NT$)", 10000, 1_000_000, int(r["LIMIT_BAL"]), step=10000)
