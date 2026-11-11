@@ -1,5 +1,4 @@
 __pycache__/
 .venv/
 BUILD_GUIDE.md
-data_exploration.ipynb
 notes.ipynb
