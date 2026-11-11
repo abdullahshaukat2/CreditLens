@@ -1,6 +1,8 @@
 from sklearn.model_selection import train_test_split
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
+import shap
 
 #linear regression model imports
 from sklearn.pipeline import make_pipeline
@@ -15,9 +17,13 @@ from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 
+from features import add_features
+
+
 SEED = 42
 TARGET = "default.payment.next.month"
 df = pd.read_csv('Data/UCI_Credit_Card.csv')
+df = add_features(df)
 x = df.drop(columns=['ID',TARGET])
 y= df[TARGET]
 print(x.shape, y.shape)
@@ -97,6 +103,14 @@ xgb_tuned.fit(X_train, y_train)
 p_xgb_tuned = xgb_tuned.predict_proba(X_test)[:, 1]
 evaluate("XGBoost Tuned", p_xgb_tuned, y_test)
 
+
+xgb_tuned.save_model("model.json")
+
+test_out = X_test.copy()
+test_out["actual_default"] = y_test
+test_out["risk_score"] = p_xgb_tuned
+test_out.to_csv("test_set.csv")
+print("Saved model.json and test_set.csv")
 
 
 
