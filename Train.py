@@ -3,6 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import shap
+import mlflow
+
 
 #linear regression model imports
 from sklearn.pipeline import make_pipeline
@@ -18,6 +20,8 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 
 from features import add_features
+
+mlflow.set_experiment("CreditLens")
 
 
 SEED = 42
@@ -40,7 +44,7 @@ logreg.fit(X_train, y_train)
 
 p_logreg = logreg.predict_proba(X_test)[:, 1]
 
-def evaluate(name, p, y_true):
+def evaluate(name, p, y_true, params):
     pred = (p >= 0.5).astype(int)
     print(f"\n===== {name} =====")
     print(f"AUC: {roc_auc_score(y_true, p):.3f}")
@@ -51,25 +55,35 @@ def evaluate(name, p, y_true):
 
     ConfusionMatrixDisplay(cm, display_labels=["Paid", "Defaulted"]).plot(cmap="Blues")
     plt.title(name)
-    plt.savefig(f"cm_{name.replace(' ', '_').lower()}.png", bbox_inches="tight")
+    cm_file = f"cm_{name.replace(' ', '_').lower()}.png" 
+    plt.savefig(cm_file, bbox_inches="tight")
     plt.close()
 
+    with mlflow.start_run(run_name=name):   
+        mlflow.log_params(params)
+        mlflow.log_metric("auc", roc_auc_score(y_true, p))
+        mlflow.log_metric("precision", precision_score(y_true, pred))
+        mlflow.log_metric("recall", recall_score(y_true, pred))
+        mlflow.log_metric("f1", f1_score(y_true, pred))
+        mlflow.log_metric("num_features", X_train.shape[1])
+        mlflow.log_artifact(cm_file)
 
-evaluate("Logistic Regression", p_logreg, y_test)
+
+evaluate("Logistic Regression", p_logreg, y_test, {"max_iter": 2000})
 
 #Random Forest model
 
 rf = RandomForestClassifier(n_estimators=300, min_samples_leaf=20, n_jobs=-1, random_state=SEED)
 rf.fit(X_train, y_train)
 p_rf = rf.predict_proba(X_test)[:, 1]
-evaluate("Random Forest", p_rf, y_test)
+evaluate("Random Forest", p_rf, y_test, {"n_estimators": 300, "min_samples_leaf": 20})
 
 
 #XGBoost model
 xgb = XGBClassifier(n_estimators=300, max_depth=4, learning_rate=0.05, eval_metric="logloss", random_state=SEED)
 xgb.fit(X_train, y_train)
 p_xgb = xgb.predict_proba(X_test)[:, 1]
-evaluate("XGBoost", p_xgb, y_test)
+evaluate("XGBoost", p_xgb, y_test, {"n_estimators": 300, "max_depth": 4, "learning_rate": 0.05})
 
 #Commeneted out afetr finding the best hyperparameters for XGBoost model using RandomizedSearchCV. 
 #The best hyperparameters are used to create a new XGBoost model and evaluate it.
@@ -101,7 +115,9 @@ xgb_tuned = XGBClassifier(n_estimators=500, max_depth=5, learning_rate=0.02, sub
 
 xgb_tuned.fit(X_train, y_train)
 p_xgb_tuned = xgb_tuned.predict_proba(X_test)[:, 1]
-evaluate("XGBoost Tuned", p_xgb_tuned, y_test)
+evaluate("XGBoost Tuned", p_xgb_tuned, y_test,
+         {"n_estimators": 500, "max_depth": 5, "learning_rate": 0.02, "subsample": 0.8,
+          "colsample_bytree": 0.6, "min_child_weight": 5})
 
 
 xgb_tuned.save_model("model.json")
